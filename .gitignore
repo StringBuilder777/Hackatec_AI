@@ -1,0 +1,39 @@
+# Secretos
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Datos persistidos (TinyDB)
+data/sessions.json
+data/*.json
+
+# Skills generados por Gemini CODE
+skills/generated/*.py
+skills/generated/_index.json
+!skills/generated/.gitkeep
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

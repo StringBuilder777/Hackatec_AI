@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StringBuilder Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Syne:wght@500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:        #0a0d14;
+    --bg-soft:   #0f1320;
+    --bg-card:   #131826;
+    --border:    #1e2535;
+    --text:      #e6edf3;
+    --muted:     #64748b;
+    --accent:    #3b82f6;
+    --accent-2:  #10b981;
+    --warn:      #f59e0b;
+    --danger:    #ef4444;
+    --purple:    #8b5cf6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    overflow: hidden;
+  }
+  code, pre, .mono { font-family: 'JetBrains Mono', monospace; }
+
+  /* ─── Sidebar ─────────────────────────────────────────────────────── */
+  .sidebar {
+    background: var(--bg-soft);
+    border-right: 1px solid var(--border);
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent-2);
+    box-shadow: 0 0 12px var(--accent-2);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; transform: scale(1); }
+    50%     { opacity: 0.6; transform: scale(0.8); }
+  }
+  .brand h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: -0.02em;
+  }
+  .brand h1 span { color: var(--accent); }
+
+  .nav { display: flex; flex-direction: column; gap: 4px; }
+  .nav button {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.92rem;
+    transition: all .15s;
+  }
+  .nav button:hover { background: var(--bg-card); color: var(--text); }
+  .nav button.active {
+    background: rgba(59,130,246,0.10);
+    border-color: rgba(59,130,246,0.35);
+    color: var(--accent);
+  }
+
+  .panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .panel h3 {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .skill-item {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    padding: 8px 10px;
+    background: var(--bg-soft);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    border-left: 3px solid var(--accent);
+  }
+  .skill-item .keys { color: var(--muted); font-size: 0.70rem; }
+  .skill-empty { color: var(--muted); font-size: 0.78rem; }
+
+  .health-row {
+    display: flex; justify-content: space-between;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    padding: 4px 0;
+  }
+  .health-row .ok    { color: var(--accent-2); }
+  .health-row .err   { color: var(--danger); }
+  .health-row .label { color: var(--muted); }
+
+  /* ─── Main ────────────────────────────────────────────────────────── */
+  .main {
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 32px 48px;
+  }
+  .header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 24px;
+  }
+  .header h2 {
+    font-size: 1.6rem; font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .header .sub { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
+
+  .tab { display: none; animation: fadeIn .25s; }
+  .tab.active { display: block; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* Inputs */
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    margin-bottom: 18px;
+  }
+  textarea, input[type="text"], input[type="number"] {
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88rem;
+    width: 100%;
+    resize: vertical;
+    transition: border-color .15s;
+  }
+  textarea:focus, input:focus {
+    outline: none; border-color: var(--accent);
+  }
+  textarea { min-height: 90px; }
+  button.primary, button.secondary, button.ghost {
+    background: var(--accent);
+    border: none; color: white;
+    padding: 10px 18px; border-radius: 8px;
+    cursor: pointer; font-family: 'Syne', sans-serif;
+    font-weight: 600; font-size: 0.9rem;
+    transition: all .15s;
+  }
+  button.primary:hover { background: #2563eb; }
+  button.secondary {
+    background: var(--bg-card); color: var(--text);
+    border: 1px solid var(--border);
+  }
+  button.secondary:hover { border-color: var(--accent); color: var(--accent); }
+  button.ghost {
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border);
+    font-size: 0.8rem; padding: 6px 12px;
+  }
+  button.ghost:hover { color: var(--text); border-color: var(--accent); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Cards */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .metric-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    border-left: 3px solid var(--accent);
+  }
+  .metric-card .label {
+    color: var(--muted);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.10em;
+    margin-bottom: 6px;
+  }
+  .metric-card .valor {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.5rem; font-weight: 700;
+    color: var(--accent);
+  }
+
+  .interpret-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 18px;
+    line-height: 1.55;
+  }
+  .interpret-card .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    margin-bottom: 8px;
+  }
+  .badge.gemini { background: rgba(59,130,246,0.15); color: var(--accent); }
+  .badge.skill  { background: rgba(16,185,129,0.15); color: var(--accent-2); }
+
+  .chart-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 14px;
+  }
+  .chart-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .chart-card h4 {
+    font-size: 0.95rem;
+    margin-bottom: 12px;
+    color: var(--text);
+  }
+  .chart-wrap {
+    position: relative;
+    height: 280px;
+  }
+
+  /* Chat */
+  .chat-window {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    height: 60vh;
+    overflow-y: auto;
+    padding: 18px;
+    display: flex; flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .bubble {
+    max-width: 75%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 0.92rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .bubble.user {
+    align-self: flex-end;
+    background: var(--accent);
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .bubble.assistant {
+    align-self: flex-start;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+  .bubble.assistant.system {
+    align-self: center;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-family: 'JetBrains Mono', monospace;
+    background: transparent;
+    border: 1px dashed var(--border);
+  }
+
+  .chat-input {
+    display: flex; gap: 8px;
+  }
+  .chat-input input { flex: 1; }
+
+  /* Stream */
+  .stream-output {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    min-height: 200px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+  .cursor::after {
+    content: "▌";
+    color: var(--accent-2);
+    animation: blink 1s infinite;
+  }
+  @keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+
+  /* Sample buttons */
+  .samples {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 20px; right: 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px 18px;
+    border-radius: 8px;
+    z-index: 1000;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: all .25s;
+    border-left: 3px solid var(--accent);
+    max-width: 360px;
+    font-size: 0.88rem;
+  }
+  .toast.show { transform: none; opacity: 1; }
+  .toast.error { border-left-color: var(--danger); }
+
+  /* Scrollbars */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  @media (max-width: 880px) {
+    body { grid-template-columns: 1fr; }
+    .sidebar { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ─── Sidebar ────────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    <h1>StringBuilder<span>.</span>Analytics</h1>
+  </div>
+
+  <nav class="nav">
+    <button class="active" data-tab="dashboard">▸ Dashboard</button>
+    <button data-tab="chat">▸ Chat IA</button>
+    <button data-tab="stream">▸ Stream</button>
+    <button data-tab="proyeccion">▸ Proyección</button>
+  </nav>
+
+  <div class="panel">
+    <h3>Skills aprendidos</h3>
+    <div id="skills-list">
+      <div class="skill-empty">— ninguno aún —</div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top: auto;">
+    <h3>Sistema</h3>
+    <div id="health-list">
+      <div class="health-row"><span class="label">cargando…</span></div>
+    </div>
+  </div>
+</aside>
+
+<!-- ─── Main ──────────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Dashboard tab -->
+  <section class="tab active" data-tab="dashboard">
+    <div class="header">
+      <div>
+        <h2>Dashboard</h2>
+        <div class="sub">Análisis único vía REST · POST /api/query</div>
+      </div>
+      <button class="ghost" id="btn-clear-dash">limpiar</button>
+    </div>
+
+    <div class="samples">
+      <button class="ghost" data-sample="ventas">Datos de ventas</button>
+      <button class="ghost" data-sample="empleados">Empleados</button>
+      <button class="ghost" data-sample="inventario">Inventario</button>
+    </div>
+
+    <div class="controls">
+      <textarea id="dash-pregunta" placeholder="Pregunta en lenguaje natural…">¿Cuál fue el mes con mayores ventas y cómo se comportaron los gastos?</textarea>
+    </div>
+    <div class="controls">
+      <textarea id="dash-datos" placeholder="Datos JSON (array de objetos)" style="min-height: 150px;"></textarea>
+    </div>
+    <div class="controls">
+      <button class="primary" id="btn-analizar">▸ Analizar</button>
+      <button class="secondary" id="btn-format-json">Formatear JSON</button>
+    </div>
+
+    <div id="dash-results"></div>
+  </section>
+
+  <!-- Chat tab -->
+  <section class="tab" data-tab="chat">
+    <div class="header">
+      <div>
+        <h2>Chat IA</h2>
+        <div class="sub">WebSocket persistente · WS /api/chat</div>
+      </div>
+      <span class="mono" id="chat-status" style="color: var(--muted); font-size: 0.78rem;">desconectado</span>
+    </div>
+
+    <div class="chat-window" id="chat-window"></div>
+
+    <div class="chat-input">
+      <input type="text" id="chat-input" placeholder="Escribe tu pregunta…" />
+      <button class="primary" id="btn-send-chat">Enviar</button>
+    </div>
+  </section>
+
+  <!-- Stream tab -->
+  <section class="tab" data-tab="stream">
+    <div class="header">
+      <div>
+        <h2>Stream</h2>
+        <div class="sub">SSE token a token (efecto Jarvis) · GET /api/stream</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <textarea id="stream-pregunta" placeholder="Pregunta…">Explícame qué es un análisis de regresión lineal de forma sencilla.</textarea>
+    </div>
+    <div class="controls">
+      <button class="primary" id="btn-stream">▸ Iniciar stream</button>
+      <button class="secondary" id="btn-stream-stop">Detener</button>
+    </div>
+
+    <div class="stream-output cursor" id="stream-output"></div>
+  </section>
+
+  <!-- Proyección tab -->
+  <section class="tab" data-tab="proyeccion">
+    <div class="header">
+      <div>
+        <h2>Proyección lineal</h2>
+        <div class="sub">Regresión lineal con scikit-learn · POST /api/projection</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <textarea id="proj-valores" placeholder="Valores separados por coma">120, 145, 158, 172, 195, 210, 235, 260, 280, 305</textarea>
+    </div>
+    <div class="controls">
+      <input type="number" id="proj-periodos" value="6" min="1" max="24" style="max-width: 120px;" />
+      <button class="primary" id="btn-proj">▸ Proyectar</button>
+    </div>
+
+    <div id="proj-results"></div>
+  </section>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── Config ──────────────────────────────────────────────────────────
+const API = '';  // mismo origen
+const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4'];
+
+// Chart.js defaults para dark mode
+Chart.defaults.color = '#64748b';
+Chart.defaults.borderColor = '#1e2535';
+Chart.defaults.font.family = "'JetBrains Mono', monospace";
+
+const charts = [];
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return document.querySelectorAll(sel); }
+
+function toast(msg, isErr = false) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.toggle('error', isErr);
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+function destroyCharts() {
+  while (charts.length) charts.pop().destroy();
+}
+
+function chartTypeMap(t) {
+  if (t === 'horizontal_bar') return 'bar';
+  return t || 'bar';
+}
+
+function renderChart(canvas, cfg) {
+  const tipo = chartTypeMap(cfg.tipo);
+  const datasets = (cfg.datos.datasets || []).map((d, i) => {
+    const color = COLORS[i % COLORS.length];
+    const base = {
+      label: d.label,
+      data: d.data,
+      borderColor: color,
+      backgroundColor: ['pie','doughnut'].includes(tipo)
+        ? cfg.datos.labels.map((_, j) => COLORS[j % COLORS.length])
+        : color + '33',
+      borderWidth: 2,
+      tension: 0.3,
+      ...(d.borderDash ? {borderDash: d.borderDash} : {}),
+    };
+    return base;
+  });
+  const isHorizontal = cfg.tipo === 'horizontal_bar';
+  const c = new Chart(canvas, {
+    type: tipo,
+    data: { labels: cfg.datos.labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: isHorizontal ? 'y' : 'x',
+      plugins: {
+        legend: { labels: { color: '#e6edf3' } },
+      },
+      scales: ['pie','doughnut'].includes(tipo) ? {} : {
+        x: { grid: { color: '#1e2535' }, ticks: { color: '#64748b' } },
+        y: { grid: { color: '#1e2535' }, ticks: { color: '#64748b' } },
+      },
+    },
+  });
+  charts.push(c);
+}
+
+// ─── Tabs ────────────────────────────────────────────────────────────
+$$('.nav button').forEach(b => {
+  b.addEventListener('click', () => {
+    $$('.nav button').forEach(x => x.classList.remove('active'));
+    $$('.tab').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    $(`.tab[data-tab="${b.dataset.tab}"]`).classList.add('active');
+  });
+});
+
+// ─── Sample data ─────────────────────────────────────────────────────
+const SAMPLES = {
+  ventas: [
+    {mes:'Enero',   ventas:45000, gastos:28000},
+    {mes:'Febrero', ventas:52000, gastos:31000},
+    {mes:'Marzo',   ventas:48000, gastos:30000},
+    {mes:'Abril',   ventas:61000, gastos:35000},
+    {mes:'Mayo',    ventas:58000, gastos:33000},
+    {mes:'Junio',   ventas:67000, gastos:38000},
+  ],
+  empleados: [
+    {area:'Ventas',     headcount:24, satisfaccion:7.8, antiguedad_prom:3.2},
+    {area:'Ingeniería', headcount:38, satisfaccion:8.4, antiguedad_prom:4.1},
+    {area:'Marketing',  headcount:12, satisfaccion:7.1, antiguedad_prom:2.5},
+    {area:'Operaciones',headcount:18, satisfaccion:6.9, antiguedad_prom:5.3},
+    {area:'Soporte',    headcount:15, satisfaccion:7.4, antiguedad_prom:2.8},
+  ],
+  inventario: [
+    {producto:'Laptop Pro',   stock:42, demanda_mes:35, costo_unit:18500},
+    {producto:'Tablet Air',   stock:18, demanda_mes:28, costo_unit:9200},
+    {producto:'Smartphone X', stock:95, demanda_mes:67, costo_unit:14800},
+    {producto:'Auriculares',  stock:230,demanda_mes:120,costo_unit:1200},
+    {producto:'Smartwatch',   stock:55, demanda_mes:42, costo_unit:5400},
+  ],
+};
+$$('[data-sample]').forEach(b => {
+  b.addEventListener('click', () => {
+    $('#dash-datos').value = JSON.stringify(SAMPLES[b.dataset.sample], null, 2);
+  });
+});
+$('#dash-datos').value = JSON.stringify(SAMPLES.ventas, null, 2);
+
+$('#btn-format-json').addEventListener('click', () => {
+  try {
+    const parsed = JSON.parse($('#dash-datos').value);
+    $('#dash-datos').value = JSON.stringify(parsed, null, 2);
+    toast('JSON formateado');
+  } catch (e) {
+    toast('JSON inválido: ' + e.message, true);
+  }
+});
+
+$('#btn-clear-dash').addEventListener('click', () => {
+  $('#dash-results').innerHTML = '';
+  destroyCharts();
+});
+
+// ─── Dashboard: REST /api/query ──────────────────────────────────────
+$('#btn-analizar').addEventListener('click', async () => {
+  const pregunta = $('#dash-pregunta').value.trim();
+  let datos;
+  try {
+    datos = JSON.parse($('#dash-datos').value);
+  } catch (e) {
+    return toast('JSON inválido: ' + e.message, true);
+  }
+  if (!pregunta) return toast('Falta la pregunta', true);
+
+  $('#btn-analizar').disabled = true;
+  $('#btn-analizar').textContent = '… analizando';
+  destroyCharts();
+  $('#dash-results').innerHTML = '<div style="color: var(--muted); padding: 20px; text-align: center;">⟳ Procesando…</div>';
+
+  try {
+    const resp = await fetch(API + '/api/query', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ pregunta, datos }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    renderResults(data);
+    refreshSidebar();
+  } catch (e) {
+    $('#dash-results').innerHTML = '';
+    toast('Error: ' + e.message, true);
+  } finally {
+    $('#btn-analizar').disabled = false;
+    $('#btn-analizar').textContent = '▸ Analizar';
+  }
+});
+
+function renderResults(data) {
+  const root = $('#dash-results');
+  root.innerHTML = '';
+
+  // Métricas
+  if (data.metricas?.length) {
+    const grid = document.createElement('div');
+    grid.className = 'grid';
+    data.metricas.forEach(m => {
+      const card = document.createElement('div');
+      card.className = 'metric-card';
+      card.innerHTML = `<div class="label">${m.label}</div><div class="valor">${m.valor}</div>`;
+      grid.appendChild(card);
+    });
+    root.appendChild(grid);
+  }
+
+  // Interpretación
+  if (data.interpretacion) {
+    const interp = document.createElement('div');
+    interp.className = 'interpret-card';
+    const badgeClass = data.skill_usado ? 'skill' : 'gemini';
+    const badgeText = data.skill_usado ? 'SKILL APRENDIDO' : 'GEMINI MAIN';
+    interp.innerHTML = `
+      <span class="badge ${badgeClass}">${badgeText}</span>
+      <div>${data.interpretacion}</div>
+    `;
+    root.appendChild(interp);
+  }
+
+  // Gráficas
+  if (data.graficas?.length) {
+    const grid = document.createElement('div');
+    grid.className = 'chart-grid';
+    data.graficas.forEach(g => {
+      const card = document.createElement('div');
+      card.className = 'chart-card';
+      const id = 'chart-' + Math.random().toString(36).slice(2, 9);
+      card.innerHTML = `<h4>${g.titulo}</h4><div class="chart-wrap"><canvas id="${id}"></canvas></div>`;
+      grid.appendChild(card);
+      setTimeout(() => renderChart(document.getElementById(id), g), 0);
+    });
+    root.appendChild(grid);
+  }
+}
+
+// ─── Chat: WebSocket /api/chat ──────────────────────────────────────
+let ws = null;
+let chatSid = null;
+function appendBubble(role, content, system = false) {
+  const div = document.createElement('div');
+  div.className = `bubble ${role}` + (system ? ' system' : '');
+  div.textContent = content;
+  $('#chat-window').appendChild(div);
+  $('#chat-window').scrollTop = $('#chat-window').scrollHeight;
+}
+
+function connectChat() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = proto + '//' + location.host + '/api/chat';
+  ws = new WebSocket(url);
+  $('#chat-status').textContent = 'conectando…';
+  ws.onopen = () => {
+    $('#chat-status').textContent = 'conectado';
+    $('#chat-status').style.color = 'var(--accent-2)';
+  };
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'session') {
+        chatSid = msg.session_id;
+        appendBubble('assistant', `Sesión iniciada (${chatSid.slice(0,8)}…)`, true);
+      } else if (msg.type === 'message') {
+        appendBubble('assistant', msg.content);
+      }
+    } catch (e) {
+      appendBubble('assistant', ev.data);
+    }
+  };
+  ws.onclose = () => {
+    $('#chat-status').textContent = 'desconectado';
+    $('#chat-status').style.color = 'var(--muted)';
+  };
+  ws.onerror = () => {
+    $('#chat-status').textContent = 'error';
+    $('#chat-status').style.color = 'var(--danger)';
+  };
+}
+
+$('#btn-send-chat').addEventListener('click', sendChat);
+$('#chat-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendChat();
+});
+
+function sendChat() {
+  const txt = $('#chat-input').value.trim();
+  if (!txt) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    toast('WebSocket no conectado', true);
+    return;
+  }
+  appendBubble('user', txt);
+  ws.send(JSON.stringify({ content: txt }));
+  $('#chat-input').value = '';
+}
+
+// ─── Stream: SSE /api/stream ────────────────────────────────────────
+let sse = null;
+
+$('#btn-stream').addEventListener('click', () => {
+  const pregunta = $('#stream-pregunta').value.trim();
+  if (!pregunta) return toast('Falta la pregunta', true);
+  if (sse) sse.close();
+  $('#stream-output').textContent = '';
+  $('#stream-output').classList.add('cursor');
+  sse = new EventSource(API + '/api/stream?pregunta=' + encodeURIComponent(pregunta));
+  sse.addEventListener('start', () => {
+    $('#stream-output').textContent = '';
+  });
+  sse.addEventListener('token', (ev) => {
+    try {
+      const { token } = JSON.parse(ev.data);
+      $('#stream-output').textContent += token;
+    } catch {}
+  });
+  sse.addEventListener('end', () => {
+    $('#stream-output').classList.remove('cursor');
+    sse.close(); sse = null;
+  });
+  sse.addEventListener('error', () => {
+    $('#stream-output').classList.remove('cursor');
+    if (sse) { sse.close(); sse = null; }
+  });
+});
+
+$('#btn-stream-stop').addEventListener('click', () => {
+  if (sse) { sse.close(); sse = null; }
+  $('#stream-output').classList.remove('cursor');
+});
+
+// ─── Proyección: POST /api/projection ───────────────────────────────
+$('#btn-proj').addEventListener('click', async () => {
+  const raw = $('#proj-valores').value.trim();
+  const valores = raw.split(/[,\s]+/).map(parseFloat).filter(n => !isNaN(n));
+  const periodos = parseInt($('#proj-periodos').value) || 6;
+  if (valores.length < 2) return toast('Se necesitan al menos 2 valores', true);
+
+  $('#btn-proj').disabled = true;
+  try {
+    const resp = await fetch(API + '/api/projection', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ valores, periodos }),
+    });
+    const data = await resp.json();
+    renderProjection(data);
+  } catch (e) {
+    toast('Error: ' + e.message, true);
+  } finally {
+    $('#btn-proj').disabled = false;
+  }
+});
+
+function renderProjection(data) {
+  const root = $('#proj-results');
+  root.innerHTML = '';
+
+  // Métricas resumen
+  const grid = document.createElement('div');
+  grid.className = 'grid';
+  grid.innerHTML = `
+    <div class="metric-card"><div class="label">Tendencia</div><div class="valor">${data.tendencia}</div></div>
+    <div class="metric-card"><div class="label">Pendiente</div><div class="valor">${data.pendiente.toFixed(2)}</div></div>
+    <div class="metric-card"><div class="label">Confianza R²</div><div class="valor">${(data.confianza_r2*100).toFixed(1)}%</div></div>
+    <div class="metric-card"><div class="label">Próximo valor</div><div class="valor">${data.proyeccion[0]?.toFixed(2) ?? '—'}</div></div>
+  `;
+  root.appendChild(grid);
+
+  // Chart
+  destroyCharts();
+  const card = document.createElement('div');
+  card.className = 'chart-card';
+  card.innerHTML = `<h4>Histórico vs Proyección</h4><div class="chart-wrap"><canvas id="proj-chart"></canvas></div>`;
+  root.appendChild(card);
+
+  const cfg = data.chart_config;
+  // chart_config ya viene listo; usar Chart.js directo
+  const c = new Chart(document.getElementById('proj-chart'), {
+    type: cfg.type,
+    data: cfg.data,
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#e6edf3' } } },
+      scales: {
+        x: { grid: { color: '#1e2535' }, ticks: { color: '#64748b' } },
+        y: { grid: { color: '#1e2535' }, ticks: { color: '#64748b' } },
+      },
+    },
+  });
+  charts.push(c);
+}
+
+// ─── Sidebar refresh: skills + health ───────────────────────────────
+async function refreshSidebar() {
+  // Skills
+  try {
+    const r = await fetch(API + '/api/skills');
+    const data = await r.json();
+    const ul = $('#skills-list');
+    if (!data.skills.length) {
+      ul.innerHTML = `<div class="skill-empty">— ninguno aún (${data.total_patterns} patrones)</div>`;
+    } else {
+      ul.innerHTML = data.skills.map(s => `
+        <div class="skill-item">
+          ${s.file}
+          <div class="keys">conf=${s.confianza.toFixed(2)} · usado=${s.veces_usado}</div>
+          <div class="keys">[${s.keys.slice(0,4).join(', ')}]</div>
+        </div>
+      `).join('');
+    }
+  } catch {}
+
+  // Health
+  try {
+    const r = await fetch(API + '/api/health');
+    const data = await r.json();
+    const html = `
+      <div class="health-row"><span class="label">status</span><span class="ok">${data.status}</span></div>
+      <div class="health-row"><span class="label">gemini</span><span class="${data.gemini_configured ? 'ok' : 'err'}">${data.gemini_configured ? 'ok' : 'no key'}</span></div>
+      <div class="health-row"><span class="label">skills</span><span class="ok">${data.skills_aprendidos}</span></div>
+      <div class="health-row"><span class="label">patrones</span><span class="ok">${data.patrones_observados}</span></div>
+    `;
+    $('#health-list').innerHTML = html;
+  } catch (e) {
+    $('#health-list').innerHTML = `<div class="health-row"><span class="label">backend</span><span class="err">offline</span></div>`;
+  }
+}
+
+// ─── Init ────────────────────────────────────────────────────────────
+refreshSidebar();
+setInterval(refreshSidebar, 30000);
+connectChat();
+appendBubble('assistant', 'Conectando al backend…', true);
+</script>
+</body>
+</html>
